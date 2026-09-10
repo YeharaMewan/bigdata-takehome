@@ -1,0 +1,6 @@
+# Confluent's Kafka client (wraps the battle-tested C library librdkafka).
+# The [avro] extra pulls in fastavro + the Schema Registry client used by
+# AvroSerializer / AvroDeserializer.
+#
+# NOTE: >=2.6 is required so that pre-built wheels exist for Python 3.13.
+confluent-kafka[avro]>=2.6.0

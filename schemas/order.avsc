@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "Order",
+  "namespace": "com.example.bigdata",
+  "doc": "A purchase transaction order message, as defined by the assignment.",
+  "fields": [
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Unique identifier for the order, e.g. \"1001\", \"1002\"."
+    },
+    {
+      "name": "product",
+      "type": "string",
+      "doc": "Name of the purchased item, e.g. \"Item1\", \"Item2\"."
+    },
+    {
+      "name": "price",
+      "type": "float",
+      "doc": "Price of the product (randomized for the assignment)."
+    }
+  ]
+}

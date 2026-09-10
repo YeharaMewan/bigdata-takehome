@@ -1,0 +1,90 @@
+# =============================================================================
+#  Kafka + Schema Registry (single-node, KRaft mode) for the Order-Avro system
+# -----------------------------------------------------------------------------
+#  DECISION      : Run everything locally with Docker Compose (Confluent images).
+#  TECHNOLOGY    : confluentinc/cp-kafka (KRaft, no Zookeeper) + cp-schema-registry.
+#  ALTERNATIVES  : Confluent Cloud (needs signup + network) / manual tarball
+#                  install (multi-step, painful on Windows).
+#  WHY OPTIMAL   : One command -> a fully reproducible stack incl. Schema
+#                  Registry. Graders can reproduce it; easy to reset.
+# =============================================================================
+services:
+
+  # ---- Kafka broker (acts as BOTH broker and KRaft controller) --------------
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"          # <- host apps (our Python producer/consumer) connect here
+    environment:
+      # --- KRaft (Zookeeper-less) settings ---
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      # A fixed cluster id lets the image auto-format its storage on first boot.
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+
+      # --- Listeners ---
+      #   PLAINTEXT      (29092) : used INSIDE the docker network (schema-registry -> kafka)
+      #   PLAINTEXT_HOST (9092)  : used from your Windows host (Python apps)
+      #   CONTROLLER     (29093) : internal KRaft traffic
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+
+      # --- Single-node safe defaults ---
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # We create topics explicitly (see kafka-init) instead of silent auto-create.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  # ---- Confluent Schema Registry --------------------------------------------
+  #  DECISION    : Manage the Avro schema centrally via Schema Registry.
+  #  WHY OPTIMAL : Producer/consumer only exchange a 4-byte schema id on the wire
+  #                (compact) + get schema validation & evolution for free. This is
+  #                the real-world Avro-on-Kafka pattern the assignment expects.
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    hostname: schema-registry
+    container_name: schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8081"          # <- REST API used by our apps' Avro (de)serializers
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'PLAINTEXT://kafka:29092'
+      SCHEMA_REGISTRY_LISTENERS: 'http://0.0.0.0:8081'
+
+  # ---- One-shot topic creator (runs, creates topics, exits) -----------------
+  #  Creating topics explicitly (instead of auto-create) is best practice: you
+  #  control partitions/replication and the intent is documented in code.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        echo ">>> Creating topics ..."
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+          --topic orders     --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+          --topic orders.DLQ --partitions 1 --replication-factor 1
+        echo ">>> Topics now present:"
+        kafka-topics --bootstrap-server kafka:29092 --list
+    restart: "no"

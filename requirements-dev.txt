@@ -1,0 +1,6 @@
+# Development / testing dependencies.
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# The test suite deliberately needs NO running Kafka - it covers the schema
+# contract, the running-average maths and the retry/DLQ decision logic.
+pytest>=8.0
