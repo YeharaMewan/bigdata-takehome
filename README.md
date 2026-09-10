@@ -9,6 +9,7 @@ A Kafka-based system that **produces** and **consumes** order messages using
 4. **Live demonstration** — deterministic fault injection makes every path reproducible.
 
 > Course: EC8202 – Big Data and Analytics.
+> Repository: https://github.com/YeharaMewan/bigdata-takehome
 
 ---
 
